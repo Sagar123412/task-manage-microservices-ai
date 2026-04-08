@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(uuid()) @db.Uuid
+  email     String     @unique @db.VarChar(255)
+  password  String     @db.VarChar(255)
+  roleId    String     @db.Uuid
+  role      Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  sessions  Session[]
+  auditLogs AuditLog[]
+  createdAt DateTime   @default(now())
+
+  @@index([roleId], map: "idx_user_role_id")
+  @@map("users")
+}
+
+model Role {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.VarChar(50)
+  users     User[]
+  createdAt DateTime @default(now())
+
+  @@map("roles")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique @db.Text
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([userId], map: "idx_session_user_id")
+  @@index([expiresAt], map: "idx_session_expires_at")
+  @@map("sessions")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String   @db.VarChar(120)
+  ipAddress  String?  @db.VarChar(64)
+  userAgent  String?  @db.VarChar(255)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId], map: "idx_audit_log_user_id")
+  @@index([createdAt], map: "idx_audit_log_created_at")
+  @@map("audit_logs")
+}
