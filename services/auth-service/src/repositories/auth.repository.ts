@@ -11,6 +11,8 @@ export class AuthRepository {
     email: string;
     password: string;
     roleId: string;
+    emailVerified: boolean;
+    emailVerificationToken: string | null;
     role: { name: string };
     createdAt: Date;
   }): AuthUserEntity {
@@ -20,6 +22,8 @@ export class AuthRepository {
       password: row.password,
       roleId: row.roleId,
       role: row.role.name === "admin" ? "admin" : "user",
+      emailVerified: row.emailVerified,
+      emailVerificationToken: row.emailVerificationToken,
       createdAt: row.createdAt,
     };
   }
@@ -37,11 +41,14 @@ export class AuthRepository {
     email: string;
     password: string;
     role: UserRole;
+    emailVerificationToken: string;
   }): Promise<AuthUserEntity> {
     const row = await this.prisma.user.create({
       data: {
         email: input.email.toLowerCase(),
         password: input.password,
+        emailVerificationToken: input.emailVerificationToken,
+        emailVerificationSentAt: new Date(),
         role: {
           connectOrCreate: {
             where: { name: input.role },
@@ -52,6 +59,25 @@ export class AuthRepository {
       include: { role: true },
     });
     return this.toEntity(row);
+  }
+
+  async findByVerificationToken(token: string): Promise<AuthUserEntity | null> {
+    const row = await this.prisma.user.findUnique({
+      where: { emailVerificationToken: token },
+      include: { role: true },
+    });
+    if (!row) return null;
+    return this.toEntity(row);
+  }
+
+  async markEmailVerified(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerified: true,
+        emailVerificationToken: null,
+      },
+    });
   }
 
   async findUserById(id: string): Promise<AuthUserEntity | null> {

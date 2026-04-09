@@ -8,8 +8,9 @@
     "shared"
   ],
   "scripts": {
-    "build": "npm run build -w @task-manager/shared && npm run build -w users-service && npm run build -w auth-service && npm run build -w gateway && npm run build -w client",
+    "build": "npm run build -w @task-manager/shared && npm run build -w users-service && npm run build -w auth-service && npm run build -w notification-service && npm run build -w gateway && npm run build -w client",
     "dev:auth": "npm run dev -w auth-service",
+    "dev:notification": "npm run dev -w notification-service",
     "dev:users": "npm run dev -w users-service",
     "dev:gateway": "npm run dev -w gateway",
     "dev:client": "npm run dev -w client",

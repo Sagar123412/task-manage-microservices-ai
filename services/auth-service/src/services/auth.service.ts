@@ -9,8 +9,10 @@ import type {
   RegisterInput,
   UserRole,
 } from "@task-manager/shared";
+import type { UserRegisteredEvent } from "@task-manager/shared";
 import { getLogger, HttpError } from "@task-manager/shared/server";
 import { getAuthRepository } from "../repositories/auth.repository.js";
+import { getRabbitMqPublisher } from "../lib/rabbitmq.publisher.js";
 
 const log = getLogger();
 
@@ -20,6 +22,9 @@ type AuthConfig = {
   jwtRefreshSecret: string;
   jwtRefreshExpiresIn: SignOptions["expiresIn"];
   refreshTokenTtlDays: number;
+  verifyEmailBaseUrl: string;
+  rabbitmqUrl: string;
+  eventExchangeName: string;
 };
 
 type AuthResult = {
@@ -40,7 +45,11 @@ function hashRefreshToken(refreshToken: string): string {
 export class AuthService {
   constructor(
     private readonly config: AuthConfig,
-    private readonly repository = getAuthRepository()
+    private readonly repository = getAuthRepository(),
+    private readonly publisher = getRabbitMqPublisher({
+      rabbitmqUrl: config.rabbitmqUrl,
+      exchangeName: config.eventExchangeName,
+    })
   ) {}
 
   async register(input: RegisterInput): Promise<AuthResult> {
@@ -53,6 +62,7 @@ export class AuthService {
       email: input.email,
       password: await bcrypt.hash(input.password, 12),
       role: input.role ?? "user",
+      emailVerificationToken: crypto.randomBytes(32).toString("hex"),
     });
 
     log.info("auth_user_registered", { userId: created.id });
@@ -61,6 +71,22 @@ export class AuthService {
       action: "auth.register",
       metadata: { role: created.role },
     });
+    const event: UserRegisteredEvent = {
+      type: "user.registered",
+      payload: {
+        userId: created.id,
+        email: created.email,
+        verificationUrl: `${this.config.verifyEmailBaseUrl}?token=${created.emailVerificationToken}`,
+      },
+    };
+    try {
+      await this.publisher.publish("user.registered", event);
+    } catch (error) {
+      log.error("auth_publish_user_registered_failed", {
+        userId: created.id,
+        error: error instanceof Error ? error.message : "unknown_error",
+      });
+    }
     return this.issueTokenPair(created.id, created.email, created.role);
   }
 
@@ -123,6 +149,21 @@ export class AuthService {
         action: "auth.logout",
       });
     }
+  }
+
+  async verifyEmail(token: string): Promise<void> {
+    const user = await this.repository.findByVerificationToken(token);
+    if (!user) {
+      throw new HttpError("Invalid verification token", 400);
+    }
+    if (user.emailVerified) {
+      return;
+    }
+    await this.repository.markEmailVerified(user.id);
+    await this.repository.createAuditLog({
+      userId: user.id,
+      action: "auth.verify_email",
+    });
   }
 
   private async issueTokenPair(id: string, email: string, role: UserRole): Promise<AuthResult> {

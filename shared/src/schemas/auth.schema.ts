@@ -20,7 +20,12 @@ export const logoutSchema = z.object({
   refreshToken: z.string().min(32),
 });
 
+export const verifyEmailQuerySchema = z.object({
+  token: z.string().min(32).max(128),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export type LogoutInput = z.infer<typeof logoutSchema>;
+export type VerifyEmailQueryInput = z.infer<typeof verifyEmailQuerySchema>;

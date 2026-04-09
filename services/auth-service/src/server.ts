@@ -17,6 +17,9 @@ const env = parseServiceEnv(
       .custom<SignOptions["expiresIn"]>((value) => typeof value === "string" || typeof value === "number")
       .default("7d"),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
+    VERIFY_EMAIL_BASE_URL: z.string().url().default("http://127.0.0.1:3000/api/v1/auth/verify-email"),
+    RABBITMQ_URL: z.string().default("amqp://127.0.0.1:5672"),
+    EVENT_EXCHANGE_NAME: z.string().default("app.events"),
   })
 );
 
@@ -31,6 +34,9 @@ const app = createApp({
   jwtRefreshSecret: env.JWT_REFRESH_SECRET,
   jwtRefreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN,
   refreshTokenTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
+  verifyEmailBaseUrl: env.VERIFY_EMAIL_BASE_URL,
+  rabbitmqUrl: env.RABBITMQ_URL,
+  eventExchangeName: env.EVENT_EXCHANGE_NAME,
 });
 
 app.listen(env.PORT, () => {

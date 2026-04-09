@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { verifyEmailQuerySchema } from "@task-manager/shared";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import type { AuthService } from "../services/auth.service.js";
 
@@ -55,6 +56,23 @@ export class AuthController {
         message: "Admin access granted",
         user: req.auth,
       });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  verifyEmail = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const parsed = verifyEmailQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "Validation failed",
+          details: parsed.error.flatten(),
+        });
+        return;
+      }
+      await this.authService.verifyEmail(parsed.data.token);
+      res.status(200).json({ message: "Email verified successfully" });
     } catch (e) {
       next(e);
     }

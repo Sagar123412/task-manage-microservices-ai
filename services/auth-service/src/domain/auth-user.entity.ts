@@ -6,5 +6,7 @@ export interface AuthUserEntity {
   password: string;
   roleId: string;
   role: UserRole;
+  emailVerified: boolean;
+  emailVerificationToken: string | null;
   createdAt: Date;
 }

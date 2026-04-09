@@ -8,14 +8,17 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(uuid()) @db.Uuid
-  email     String     @unique @db.VarChar(255)
-  password  String     @db.VarChar(255)
-  roleId    String     @db.Uuid
-  role      Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  sessions  Session[]
-  auditLogs AuditLog[]
-  createdAt DateTime   @default(now())
+  id                     String     @id @default(uuid()) @db.Uuid
+  email                  String     @unique @db.VarChar(255)
+  password               String     @db.VarChar(255)
+  roleId                 String     @db.Uuid
+  role                   Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  emailVerified          Boolean    @default(false)
+  emailVerificationToken String?    @unique @db.VarChar(128)
+  emailVerificationSentAt DateTime?
+  sessions               Session[]
+  auditLogs              AuditLog[]
+  createdAt              DateTime   @default(now())
 
   @@index([roleId], map: "idx_user_role_id")
   @@map("users")

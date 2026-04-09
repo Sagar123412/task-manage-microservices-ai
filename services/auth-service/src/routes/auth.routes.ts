@@ -12,6 +12,9 @@ export function buildAuthRoutes(config: {
   jwtRefreshSecret: string;
   jwtRefreshExpiresIn: SignOptions["expiresIn"];
   refreshTokenTtlDays: number;
+  verifyEmailBaseUrl: string;
+  rabbitmqUrl: string;
+  eventExchangeName: string;
 }) {
   const router = Router();
   const authService = getAuthService(config);
@@ -21,6 +24,7 @@ export function buildAuthRoutes(config: {
   router.post("/login", validateBody(loginSchema), authController.login);
   router.post("/refresh", validateBody(refreshTokenSchema), authController.refresh);
   router.post("/logout", validateBody(logoutSchema), authController.logout);
+  router.get("/verify-email", authController.verifyEmail);
   router.get("/me", authenticate(config.jwtAccessSecret), authController.me);
   router.get(
     "/admin-only",

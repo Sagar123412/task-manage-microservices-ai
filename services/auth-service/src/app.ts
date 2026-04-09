@@ -9,6 +9,9 @@ export type AuthAppConfig = {
   jwtRefreshSecret: string;
   jwtRefreshExpiresIn: SignOptions["expiresIn"];
   refreshTokenTtlDays: number;
+  verifyEmailBaseUrl: string;
+  rabbitmqUrl: string;
+  eventExchangeName: string;
 };
 
 export function createApp(config: AuthAppConfig) {
