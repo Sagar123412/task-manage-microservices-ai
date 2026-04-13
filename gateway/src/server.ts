@@ -7,6 +7,7 @@ const env = parseServiceEnv(
     PORT: z.coerce.number().int().positive().default(3000),
     USERS_SERVICE_URL: z.string().url().default("http://127.0.0.1:4002"),
     AUTH_SERVICE_URL: z.string().url().default("http://127.0.0.1:4003"),
+    TODO_SERVICE_URL: z.string().url().default("http://127.0.0.1:4005"),
   })
 );
 
@@ -16,6 +17,7 @@ const log = getLogger();
 const app = createApp({
   usersServiceUrl: env.USERS_SERVICE_URL,
   authServiceUrl: env.AUTH_SERVICE_URL,
+  todoServiceUrl: env.TODO_SERVICE_URL,
 });
 app.listen(env.PORT, () => {
   log.info("gateway_listening", { port: env.PORT });

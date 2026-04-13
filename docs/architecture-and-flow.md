@@ -12,6 +12,7 @@ A **monorepo** for a small **microservices-style** setup:
 - One **API gateway** that forwards HTTP to backend services (no shared database between services).
 - One **users microservice**.
 - One **auth microservice** (JWT auth, refresh tokens, RBAC, email verification token flow).
+- One **todo microservice** (MongoDB + Redis cache + CRUD with pagination/filtering + cache invalidation).
 - One **notification microservice** (RabbitMQ consumer + email sender with retries/dead-letter).
 - A **shared** library for validation schemas and types so services do not duplicate Zod rules.
 
@@ -29,6 +30,7 @@ The **product goal** is a **task manager** with room for **AI-assisted** workflo
 |--------------|-------------------|--------|
 | **User directory** | List users in the React client; REST CRUD for users via gateway | `users-service` remains an independent service. |
 | **Auth** | Register, login, refresh, logout, `me`, and admin-only endpoint | JWT access + refresh tokens, RBAC middleware (`admin`, `user`), refresh token persistence in DB, bcrypt password hashing. |
+| **Todos** | CRUD APIs for todos with filtering (`status`, `search`) and pagination (`page`, `limit`) | `todo-service` stores data in MongoDB and uses Redis cache for list/detail reads with invalidation on writes. |
 | **Email verification** | Verification link generated at registration and sent by notification service | `auth-service` publishes `user.registered`; notification sends clickable verification email. |
 | **Event-driven notifications** | Notification consumer handles `user.registered` and `todo.created` | RabbitMQ topic exchange, retry queue, dead-letter queue, failure logging. |
 | **API shape** | REST under `/api/v1/...` | Gateway is the single entry from the browser in dev (via Vite proxy). |
@@ -71,6 +73,7 @@ flowchart LR
   subgraph services_tier["Service tier"]
     US["users-service\n:4002"]
     AS["auth-service\n:4003"]
+    TS["todo-service\n:4005"]
     NS["notification-service\n:4004"]
     MQ["RabbitMQ\n:5672"]
     SMTP["SMTP dev inbox\n:1025"]
@@ -79,6 +82,7 @@ flowchart LR
   Vite -->|"proxy /api"| GW
   GW -->|"HTTP USERS_SERVICE_URL"| US
   GW -->|"HTTP AUTH_SERVICE_URL"| AS
+  GW -->|"HTTP TODO_SERVICE_URL"| TS
   AS -->|"publish user.registered"| MQ
   MQ -->|"consume events"| NS
   NS -->|"send email"| SMTP
@@ -90,6 +94,7 @@ flowchart LR
 | **gateway** | `3000` | Public API surface for the browser; forwards to internal service URLs. |
 | **users-service** | `4002` | Owns user data in this codebase (in-memory until you plug in a database). |
 | **auth-service** | `4003` | Owns auth DB tables (users/roles/sessions/audit logs), JWT issuance, refresh/logout, email verification token handling. |
+| **todo-service** | `4005` | Owns todo CRUD in MongoDB and Redis-backed read cache (pagination/filtering + invalidation). |
 | **notification-service** | `4004` | Consumes RabbitMQ events and sends templated emails with retry/dead-letter handling. |
 | **rabbitmq** | `5672` | Topic exchange for async events (e.g., `user.registered`, `todo.created`). |
 | **SMTP dev inbox** | `1025` (UI often `8025`) | Local mail sink for testing outbound emails. |
@@ -101,7 +106,10 @@ flowchart LR
 | `PORT` | gateway, users-service, auth-service, notification-service | Listen port (defaults above if unset). |
 | `USERS_SERVICE_URL` | gateway | Base URL of the users microservice (default `http://127.0.0.1:4002`). |
 | `AUTH_SERVICE_URL` | gateway | Base URL of auth microservice (default `http://127.0.0.1:4003`). |
+| `TODO_SERVICE_URL` | gateway | Base URL of todo microservice (default `http://127.0.0.1:4005`). |
 | `DATABASE_URL` | auth-service | Postgres connection string for auth tables. |
+| `MONGODB_URI` | todo-service | MongoDB connection string for todo documents. |
+| `REDIS_URL` | todo-service | Redis connection string for todo cache. |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | auth-service | Signing keys for access and refresh tokens. |
 | `RABBITMQ_URL`, `EVENT_EXCHANGE_NAME` | auth-service, notification-service | Event bus connectivity and exchange name. |
 | `SMTP_HOST`, `SMTP_PORT`, `EMAIL_FROM` | notification-service | Outbound email transport config. |
@@ -137,8 +145,9 @@ Nothing in that table is mandatory on day one; it is the **infrastructure story*
 | `shared/` | **`@task-manager/shared`** — Zod schemas and types (safe for the client). **`@task-manager/shared/server`** — Winston, Express middleware, env loader, `HttpError`, `asyncHandler`, utils (Node/gateway only). |
 | `services/users-service/` | **Users** microservice: Express app, clean architecture layers, in-memory user store (replace with a real DB later). |
 | `services/auth-service/` | **Auth** microservice: Express + Prisma + JWT access/refresh tokens + RBAC + email verification token flow; publishes `user.registered` to RabbitMQ. |
+| `services/todo-service/` | **Todo** microservice: Express + Mongoose repository, Redis cache singleton, CRUD + pagination/filtering + cache invalidation. |
 | `services/notification-service/` | **Notification** microservice: RabbitMQ consumer + nodemailer templates + retry/dead-letter queues + failure logging. |
-| `gateway/` | **API gateway**: Express app that proxies `/api/v1/users` and `/api/v1/auth`; exposes `GET /health`. |
+| `gateway/` | **API gateway**: Express app that proxies `/api/v1/users`, `/api/v1/auth`, `/api/v1/todos`; exposes `GET /health`. |
 | `client/` | **SPA**: **Vite** + **React** + TypeScript. In dev, Vite proxies `/api` to the gateway so the browser stays same-origin. |
 | Root `package.json` | **npm workspaces** wire all packages together; `npm run build` builds in dependency order. |
 
@@ -155,6 +164,7 @@ sequenceDiagram
   participant Gateway as gateway :3000
   participant Users as users-service :4002
   participant Auth as auth-service :4003
+  participant Todo as todo-service :4005
   participant MQ as RabbitMQ
   participant Notify as notification-service :4004
   participant Mail as SMTP inbox
@@ -166,6 +176,12 @@ sequenceDiagram
   Users-->>Gateway: JSON response
   Gateway-->>Vite: JSON response
   Vite-->>Browser: JSON response
+  Browser->>Vite: GET /api/v1/todos?page=1&limit=10
+  Vite->>Gateway: proxy todos request
+  Gateway->>Todo: /api/v1/todos
+  Todo->>Todo: routes → controller → service(cache) → repository(Mongo)
+  Todo-->>Gateway: JSON response
+  Gateway-->>Vite: JSON response
   Browser->>Vite: POST /api/v1/auth/register
   Vite->>Gateway: proxy auth request
   Gateway->>Auth: /api/v1/auth/register
@@ -180,12 +196,15 @@ sequenceDiagram
 - Gateway: `3000` (`PORT`)
 - Users service: `4002` (`PORT`)
 - Auth service: `4003` (`PORT`)
+- Todo service: `4005` (`PORT`)
 - Notification service: `4004` (`PORT`)
 
 **Environment:**
 
 - Gateway reads `USERS_SERVICE_URL` and `AUTH_SERVICE_URL`.
+- Gateway reads `USERS_SERVICE_URL`, `AUTH_SERVICE_URL`, and `TODO_SERVICE_URL`.
 - Auth and notification services read `RABBITMQ_URL` and `EVENT_EXCHANGE_NAME`.
+- Todo service reads `MONGODB_URI` and `REDIS_URL`.
 
 ---
 
@@ -232,8 +251,10 @@ The gateway **does not** query a database; it only forwards to microservices.
 | Runtime modules | **Node ESM** (`"type": "module"`) | `import`/`export` and `.js` extensions in compiled output. |
 | HTTP server | **Express** | Gateway and `users-service`. |
 | ORM | **Prisma** | `auth-service` PostgreSQL schema and data access. |
+| ODM | **Mongoose** | `todo-service` MongoDB models and queries. |
 | Auth tokens | **jsonwebtoken** | Access + refresh token issuing and verification. |
 | Password hashing | **bcryptjs** | Secure password hashing + compare in auth login flow. |
+| Cache | **Redis / node-redis** | `todo-service` read caching and invalidation. |
 | Event broker | **RabbitMQ / amqplib** | Async event publishing/consuming (`user.registered`, `todo.created`). |
 | Email | **nodemailer** | Notification service email dispatch with templates. |
 | Validation | **Zod** | Request bodies and params; schemas live in `shared` where possible. |
@@ -251,6 +272,7 @@ The gateway **does not** query a database; it only forwards to microservices.
   - `GET /health` → `{ "status": "ok" }`
   - `/api/v1/users` → proxied to users-service (same path on the upstream base URL).
   - `/api/v1/auth` → proxied to auth-service.
+  - `/api/v1/todos` → proxied to todo-service.
 
 - **Users service** (also reachable directly on port 4002 if you bypass the gateway)
   - `GET/POST /api/v1/users`
@@ -265,6 +287,13 @@ The gateway **does not** query a database; it only forwards to microservices.
   - `GET /api/v1/auth/admin-only` (RBAC)
   - `GET /api/v1/auth/verify-email?token=...`
 
+- **Todo service** (also reachable directly on port 4005)
+  - `POST /api/v1/todos`
+  - `GET /api/v1/todos?page=1&limit=10&status=todo&search=term`
+  - `GET /api/v1/todos/:id`
+  - `PATCH /api/v1/todos/:id`
+  - `DELETE /api/v1/todos/:id`
+
 ---
 
 ## Build order
@@ -275,21 +304,22 @@ From the root:
 npm run build
 ```
 
-Builds: `@task-manager/shared` → `users-service` → `auth-service` → `notification-service` → `gateway` → `client`.  
+Builds: `@task-manager/shared` → `users-service` → `auth-service` → `todo-service` → `notification-service` → `gateway` → `client`.  
 `shared` must compile first (it emits both the root bundle and `dist/server/` for services).
 
 ---
 
 ## How to run locally (development)
 
-Use **five terminals** (order matters: infra + backend before client):
+Use **six terminals** (order matters: infra + backend before client):
 
 1. RabbitMQ + SMTP inbox (MailHog/Mailpit)  
 2. `npm run dev:users` — users-service on 4002  
 3. `npm run dev:auth` — auth-service on 4003  
-4. `npm run dev:notification` — notification-service on 4004  
-5. `npm run dev:gateway` — gateway on 3000  
-6. `npm run dev:client` — Vite on 5173; open the URL it prints  
+4. `npm run dev:todo` — todo-service on 4005  
+5. `npm run dev:notification` — notification-service on 4004  
+6. `npm run dev:gateway` — gateway on 3000  
+7. `npm run dev:client` — Vite on 5173; open the URL it prints  
 
 Then the client can call `/api/*` and Vite forwards to the gateway; auth registration emits `user.registered` and notification service sends verification email.
 
