@@ -15,10 +15,11 @@ export class UpstreamRepository {
     method: string,
     pathWithQuery: string,
     body: unknown,
-    hasJsonBody: boolean
+    hasJsonBody: boolean,
+    forwardedHeaders: Record<string, string> = {}
   ): Promise<ForwardResult> {
     const url = `${serviceBaseUrl.replace(/\/$/, "")}${pathWithQuery}`;
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...forwardedHeaders };
     if (hasJsonBody && body !== undefined && method !== "GET" && method !== "HEAD") {
       headers["content-type"] = "application/json";
     }

@@ -19,12 +19,17 @@ export class ProxyService {
     const pathWithQuery = req.originalUrl;
     const hasJsonBody = req.is("application/json") === "application/json";
     const body = hasJsonBody ? req.body : undefined;
+    const forwardedHeaders: Record<string, string> = {};
+    if (typeof req.headers.authorization === "string") {
+      forwardedHeaders.authorization = req.headers.authorization;
+    }
     return this.upstream.forward(
       serviceBaseUrl,
       req.method,
       pathWithQuery,
       body,
-      hasJsonBody
+      hasJsonBody,
+      forwardedHeaders
     );
   }
 }
