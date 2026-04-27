@@ -41,7 +41,9 @@ export function VerifyEmailPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col items-start justify-center gap-6 px-6 py-20">
-      <BackNavigation fallbackHref="/auth?mode=login" />
+      <div className="-mb-2">
+        <BackNavigation fallbackHref="/auth?mode=login" />
+      </div>
       <h1 className="text-3xl font-semibold">Verify Email</h1>
       <p className="text-sm text-zinc-600 dark:text-zinc-300">{message}</p>
       <button

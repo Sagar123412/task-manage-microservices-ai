@@ -52,10 +52,10 @@ export function AuthPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-20">
+      <div className="mb-4">
+        <BackNavigation fallbackHref="/" />
+      </div>
       <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mb-4">
-          <BackNavigation fallbackHref="/" />
-        </div>
         <h1 className="text-2xl font-semibold">
           {mode === "signup" ? "Create account" : "Login"}
         </h1>
